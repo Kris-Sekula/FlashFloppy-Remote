@@ -77,6 +77,30 @@ Pin usage is fixed by the board (defined in `main/board.h`):
 
 ## Building and flashing
 
+### Flashing a release binary (easiest)
+
+No ESP-IDF install needed. Download `flashfloppy-remote-v44.bin` from
+[Releases](https://github.com/Kris-Sekula/FlashFloppy-Remote/releases),
+then flash it in one command with
+[esptool](https://docs.espressif.com/projects/esptool/en/latest/esp32s3/)
+(`pip install esptool` if you don't have it):
+
+```sh
+esptool.py --chip esp32s3 --port COMx write_flash 0x0 flashfloppy-remote-v44.bin
+```
+
+Replace `COMx` with your port (`COM3` on Windows, `/dev/ttyACM0` on
+Linux, `/dev/cu.usbmodem...` on macOS). The file is a merged image —
+bootloader, partition table and app in one — so offset `0x0` is the
+whole command. If esptool can't connect, hold the board's BOOT button
+while plugging it in (that puts the S3 into download mode).
+
+After flashing, see [Preparing the SD card](#preparing-the-sd-card):
+with a FAT32 card in the slot, the board starts its own Wi-Fi access
+point and the web UI is at http://192.168.4.1/.
+
+### Building from source
+
 Requires **ESP-IDF v5.5.x** (developed against v5.5.6). The project pins
 `espressif/esp_tinyusb` to `>=1.7.0,<2.0.0` in `main/idf_component.yml`,
 because v2 changed the MSC storage API this code uses.
