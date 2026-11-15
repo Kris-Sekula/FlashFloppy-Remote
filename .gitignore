@@ -1,0 +1,8 @@
+# ESP-IDF build output and generated files — never commit these
+ESP-IDF_project/build/
+ESP-IDF_project/managed_components/
+ESP-IDF_project/dependencies.lock
+ESP-IDF_project/sdkconfig
+ESP-IDF_project/sdkconfig.old
+# Patch files are a delivery mechanism, not part of the project
+*.patch

@@ -9,7 +9,7 @@ touching the machine, pulling the stick, or walking across the room.
 
 Simply insert into your Gotek drive and control remotly
 
-![In action](https://github.com/Kris-Sekula/s100/blob/main/flashfloppy_remote_usb/remote_usb.jpg)
+![In action](remote_usb.jpg)
 
 The board's own LCD shows the selected file name, the Wi-Fi network, the
 IP address and the mDNS hostname (`<hostname>.local`), plus a small `FTP`
@@ -183,7 +183,7 @@ physical buttons.
 
 ## Using the web UI
 
-![UI](https://github.com/Kris-Sekula/s100/blob/main/flashfloppy_remote_usb/ui.jpg)
+![UI](ui.jpg)
 
 **Status line** — `Presented: <file> | state: <state> | drive ejected/presented | wifi: <mode> <address>`.
 It refreshes automatically every 2 seconds, so it follows selections,
