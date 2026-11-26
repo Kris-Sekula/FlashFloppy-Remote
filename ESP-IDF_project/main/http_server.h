@@ -23,6 +23,10 @@ bool ff_request_select(const char *name);
  *                          to .staging then renamed into the library.
  *                          Refuses to overwrite the presented image:
  *                          swap away, upload, then select the new version.
+ *   GET  /api/download?path=<file>  stream raw file bytes from the card
+ *                          while ejected (v45). Protected config files
+ *                          (IMAGE_A.CFG / INIT_A.CFG / FTP.CFG) refuse,
+ *                          same as FTP RETR.
  * Security, v1: HTTP basic auth at minimum, LAN-only, never port-forward.
  * Auth is a TODO in http_server.c — do not expose this beyond the LAN
  * until it lands. */

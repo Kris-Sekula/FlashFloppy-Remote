@@ -3,7 +3,7 @@
 /* Minimal embedded web UI, served from GET /.
  * Talks to /api/status, /api/library, /api/select, /api/eject,
  * /api/reinsert, /api/force, /api/power, /api/upload (raw-body
- * POST, ?name=<file>).
+ * POST, ?name=<file>), /api/download (?path=<file>, v45).
  *
  * v15 whole-card notes: the library list is the card snapshot from
  * the last local window. Since v37 uploads are only possible
@@ -16,6 +16,8 @@
 static const char FF_WEB_UI_HTML[] =
 "<!doctype html><html><head><meta charset=\"utf-8\">\n"
 "<title>FlashFloppy</title></head><body>\n"
+"<style>body{max-width:720px;margin:0 auto;padding:16px;font-family:monospace;}\n"
+"li{cursor:pointer;user-select:none;}</style>\n"
 "<h1>FlashFloppy</h1>\n"
 "<p id=\"status\">Loading…</p>\n"
 "<p id=\"err\" style=\"color:#b00;display:none\"></p>\n"
@@ -34,7 +36,8 @@ static const char FF_WEB_UI_HTML[] =
 "</div>\n"
 "<h2>Library</h2><ul id=\"lib\"></ul>\n"
 "<p><button onclick=\"selectChosen()\">Select</button>\n"
-"<label><input type=\"checkbox\" id=\"rstAfter\"> restart machine after swap</label></p>\n"
+"<label><input type=\"checkbox\" id=\"rstAfter\"> restart machine after swap</label>\n"
+" <small>(double-click any file to download while ejected)</small></p>\n"
 "<h3>Config Files</h3><ul id=\"cfg\"></ul>\n"
 "<h2>Upload</h2>\n"
 "<input type=\"file\" id=\"file\">\n"
@@ -44,7 +47,7 @@ static const char FF_WEB_UI_HTML[] =
 "<p id=\"upHint\">Uploads write straight to the card, any size — but only while the drive is ejected.</p>\n"
 "<p id=\"ftpHint\">FTP: ftp://flashfloppy.local — same eject-first rule, any FTP client (user <code>usb</code>, password <code>remoteusb</code> unless FTP.CFG sets them).</p>\n"
 "<script>\n"
-"let lastLib='', cur='', lastCur=null, pwrFile=false, actionErr='';\n"
+"let lastLib='', cur='', lastCur=null, pwrFile=false, actionErr='', isEjected=false;\n"
 "function fmtSize(n){\n"
 "  if(n<1000) return n+' B';\n"
 "  let v,u;\n"
@@ -58,6 +61,27 @@ static const char FF_WEB_UI_HTML[] =
 "function show(id,txt){\n"
 "  const e=document.getElementById(id);\n"
 "  e.textContent=txt||''; e.style.display=txt?'':'none';\n"
+"}\n"
+"function downloadFile(f){\n"
+"  const nm=(f.name||'').toUpperCase();\n"
+"  if(nm==='IMAGE_A.CFG'||nm==='INIT_A.CFG'||nm==='FTP.CFG'){\n"
+"    actionErr='That file is protected and cannot be downloaded.';\n"
+"    show('err',actionErr);\n"
+"    setTimeout(()=>{ actionErr=''; },8000);\n"
+"    return;\n"
+"  }\n"
+"  if(!isEjected){\n"
+"    actionErr='Eject the drive first — downloads are only possible while it is ejected.';\n"
+"    show('err',actionErr);\n"
+"    setTimeout(()=>{ actionErr=''; },8000);\n"
+"    return;\n"
+"  }\n"
+"  const a=document.createElement('a');\n"
+"  a.href='/api/download?path='+encodeURIComponent(f.path||f.name);\n"
+"  a.download=f.name;\n"
+"  document.body.appendChild(a);\n"
+"  a.click();\n"
+"  document.body.removeChild(a);\n"
 "}\n"
 "/* POST and report a refusal (409 busy, 400 bad name, ...) instead of\n"
 "   silently ignoring it (v39). */\n"
@@ -92,6 +116,7 @@ static const char FF_WEB_UI_HTML[] =
 "    return;\n"
 "  }\n"
 "  cur=s.current||'';\n"
+"  isEjected=!!s.ejected;\n"
 "  document.getElementById('status').textContent=\n"
 "    'Presented: '+(s.current||'(none)')+' | state: '+s.state+\n"
 "    ' | '+(s.uploading?'upload in progress':\n"
@@ -126,6 +151,8 @@ static const char FF_WEB_UI_HTML[] =
 "    const cfgUl=document.getElementById('cfg'); cfgUl.innerHTML='';\n"
 "    lib.files.forEach(f=>{\n"
 "      const li=document.createElement('li');\n"
+"      li.title='Double-click to download';\n"
+"      li.ondblclick=()=>downloadFile(f);\n"
 "      if(f.kind==='image'){\n"
 "        const lab=document.createElement('label');\n"
 "        const r=document.createElement('input');\n"

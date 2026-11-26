@@ -31,6 +31,8 @@ while a transfer streams).
   straight to the card over Wi-Fi, any size the card can hold; an upload
   never fights the Gotek for the filesystem because the Gotek doesn't
   have it at the time.
+- **Downloads while ejected** — double-click any file in the web UI to
+  download a copy to your computer, same eject-first rule as uploads.
 - **LCD status display** — selected file name in large type, plus SSID, IP
   address and the mDNS hostname (`<hostname>.local`), on the board's 1.47"
   colour LCD. An `FTP` badge appears in the header while an FTP client is
@@ -262,6 +264,15 @@ to the Gotek.
 `FF.CFG` and `IMG.CFG` may be uploaded; `IMAGE_A.CFG` is refused,
 because FlashFloppy owns it. `POWER.CFG` and `WIFI.CFG` are read only
 at boot: after uploading one, power-cycle the dongle to apply it.
+
+**Downloading**
+
+Double-click any file in the library or Config Files list to download
+a copy to your computer. Downloads follow the same rule as uploads:
+the drive must be **ejected** first — double-clicking while presented
+says so, instead of failing quietly. The browser saves the file under
+its original name. `IMAGE_A.CFG`, `INIT_A.CFG` and `FTP.CFG` are
+protected and refuse — the same set FTP refuses.
 
 **Re-insert card** — runs a disconnect/edit/reconnect cycle without
 changing the selection, and hands the card back after an eject.

@@ -4,6 +4,7 @@
 #include "storage.h"
 #include "power.h"
 #include "web_ui.h"
+#include "paths.h"
 #include "util.h"
 #include <stdio.h>
 #include <string.h>
@@ -439,6 +440,121 @@ static esp_err_t h_upload(httpd_req_t *req)
                               : "{\"ok\":true}");
 }
 
+static esp_err_t h_download(httpd_req_t *req)
+{
+    /* ?path=<file>: stream a file directly from the SD card to the
+     * browser (v45, contributed). Only permitted while the drive is
+     * EJECTED so USB and VFS never contend for the card. */
+    char query[192];
+    char path_raw[128];
+    if (httpd_req_get_url_query_str(req, query, sizeof(query)) != ESP_OK ||
+        httpd_query_key_value(query, "path", path_raw,
+                              sizeof(path_raw)) != ESP_OK) {
+        ESP_LOGW(TAG, "download without usable ?path= (uri: %s)", req->uri);
+        return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST,
+                                   "path required");
+    }
+    url_decode_in_place(path_raw);
+    /* Basename only: no directories, no traversal off the card. */
+    const char *name = strrchr(path_raw, '/');
+    name = name ? name + 1 : path_raw;
+    const char *bs = strrchr(name, '\\');
+    if (bs) name = bs + 1;
+    if (!name[0] || strstr(name, "..")) {
+        return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "bad path");
+    }
+    const char *problem = ff_store_name_problem(name);
+    if (problem) {
+        return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, problem);
+    }
+    /* Same protected set as FTP RETR (paths.c): IMAGE_A.CFG and
+     * INIT_A.CFG are FlashFloppy's own, and FTP.CFG holds the FTP
+     * password — none of them leave the card over HTTP either. */
+    if (ff_path_is_protected(name)) {
+        return httpd_resp_send_err(req, HTTPD_403_FORBIDDEN,
+                                   "that file is protected");
+    }
+
+    /* Claim the ejected state for the duration of the download. */
+    ff_state_lock();
+    bool busy = g_ff.upload_active || g_ff.download_active ||
+                g_ff.state == FF_STATE_SWAP_PENDING ||
+                g_ff.state == FF_STATE_DISCONNECTED ||
+                g_ff.state == FF_STATE_APPLYING;
+    bool ejected = g_ff.state == FF_STATE_IDLE && !g_ff.presented;
+    if (!busy && ejected) g_ff.download_active = true;
+    ff_state_unlock();
+
+    if (busy) {
+        return send_conflict(req, "operation in progress");
+    }
+    if (!ejected) {
+        return send_conflict(req, "eject the drive before downloading");
+    }
+
+    char full_path[160];
+    snprintf(full_path, sizeof(full_path), "/sdcard/%s", name);
+
+    FILE *fp = fopen(full_path, "rb");
+    if (!fp) {
+        ff_state_lock();
+        g_ff.download_active = false;
+        ff_state_unlock();
+        ESP_LOGW(TAG, "download file not found: %s", full_path);
+        return httpd_resp_send_err(req, HTTPD_404_NOT_FOUND,
+                                   "file not found");
+    }
+
+    const size_t chunk_cap = 8192;
+    uint8_t *buf = (uint8_t *)malloc(chunk_cap);
+    if (!buf) {
+        fclose(fp);
+        ff_state_lock();
+        g_ff.download_active = false;
+        ff_state_unlock();
+        return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR,
+                                   "out of memory");
+    }
+
+    httpd_resp_set_type(req, "application/octet-stream");
+    httpd_resp_set_hdr(req, "Cache-Control", "no-store");
+    char disp[192];
+    snprintf(disp, sizeof(disp), "attachment; filename=\"%s\"", name);
+    httpd_resp_set_hdr(req, "Content-Disposition", disp);
+
+    esp_err_t send_err = ESP_OK;
+    while (true) {
+        size_t n = fread(buf, 1, chunk_cap, fp);
+        if (n > 0) {
+            send_err = httpd_resp_send_chunk(req, (const char *)buf, n);
+            if (send_err != ESP_OK) {
+                ESP_LOGW(TAG, "download stream aborted for %s", name);
+                break;
+            }
+        }
+        if (n < chunk_cap) {
+            if (ferror(fp)) {
+                ESP_LOGE(TAG, "read error while downloading %s", name);
+                send_err = ESP_FAIL;
+            }
+            break;
+        }
+    }
+
+    free(buf);
+    fclose(fp);
+
+    ff_state_lock();
+    g_ff.download_active = false;
+    ff_state_unlock();
+
+    if (send_err != ESP_OK) {
+        httpd_resp_send_chunk(req, NULL, 0);
+        return ESP_FAIL;
+    }
+    return httpd_resp_send_chunk(req, NULL, 0);
+}
+
 esp_err_t ff_http_start(void)
 {
     httpd_handle_t server = NULL;
@@ -467,6 +583,7 @@ esp_err_t ff_http_start(void)
         {.uri = "/api/reinsert", .method = HTTP_POST, .handler = h_reinsert},
         {.uri = "/api/force", .method = HTTP_POST, .handler = h_force},
         {.uri = "/api/upload", .method = HTTP_POST, .handler = h_upload},
+        {.uri = "/api/download", .method = HTTP_GET, .handler = h_download},
         {.uri = "/api/power", .method = HTTP_GET, .handler = h_power_get},
         {.uri = "/api/power", .method = HTTP_POST, .handler = h_power_post},
     };
